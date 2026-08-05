@@ -183,6 +183,18 @@ def api_version_latest():
     })
 
 
+
+
+@app.route("/api/config", methods=["POST"])
+def api_config_save():
+    """Atualiza configuracoes do Gestor via JSON (para frontend React)."""
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"success": False, "message": "JSON body requerido"}), 400
+    for key in ["releases_repo", "heartbeat_timeout_minutes", "github_token"]:
+        if key in data:
+            gestor_db.set_config(key, data[key])
+    return jsonify({"success": True, "message": "Configuracao salva com sucesso"})
 @app.route("/api/clients")
 def api_clients():
     clients = gestor_db.get_all_clients()
