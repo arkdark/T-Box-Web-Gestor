@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Configurações{% endblock %}
+{% set active_page = 'config' %}
+
+{% block content %}
+<h2 style="font-size:22px; font-weight:700; margin-bottom:8px;">Configurações do Gestor</h2>
+<p class="text-muted" style="margin-bottom:20px;">Gerencie repositórios, tokens e limites de timeout</p>
+
+<form method="POST" action="{{ url_for('config_save') }}">
+    <div class="card">
+        <div class="card-header"><i class="fas fa-cog"></i> Configurações</div>
+        <div class="card-body">
+            <div style="margin-bottom:16px;">
+                <label class="form-label">Repositório de Releases (GitHub)</label>
+                <input type="text" name="releases_repo" class="form-input"
+                       value="{{ config.get('releases_repo', 'arkdark/arkdark-T-Box-Web-releases') }}"
+                       placeholder="ex: arkdark/arkdark-T-Box-Web-releases">
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label class="form-label">GitHub Token (PAT)</label>
+                <input type="password" name="github_token" class="form-input"
+                       value="{{ config.get('github_token', '') }}"
+                       placeholder="github_pat_...">
+                <p class="text-small">Token para acessar a API do GitHub. Necessário se o repo for privado.</p>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label class="form-label">Timeout de Heartbeat (minutos)</label>
+                <input type="number" name="heartbeat_timeout_minutes" class="form-input"
+                       value="{{ config.get('heartbeat_timeout_minutes', '5') }}" min="1" max="60">
+                <p class="text-small">Clientes sem heartbeat por este período são marcados como offline.</p>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label class="form-label">SECRET_KEY do Flask</label>
+                <input type="password" name="flask_secret_key" class="form-input"
+                       value="" placeholder="Deixe em branco para manter o atual">
+            </div>
+        </div>
+    </div>
+
+    <div style="display:flex; gap:12px;">
+        <button type="submit" class="btn btn-primary" style="height:40px; font-size:14px;">
+            <i class="fas fa-save"></i> Salvar Configurações
+        </button>
+        <a href="{{ url_for('releases_page') }}" class="btn btn-secondary" style="height:40px; font-size:14px;">
+            <i class="fas fa-sync"></i> Sincronizar Releases
+        </a>
+    </div>
+</form>
+{% endblock %}

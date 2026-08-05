@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Cliente {{ client.machine_id[:8] }}{% endblock %}
+{% set active_page = 'clients' %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+    <div>
+        <h2 style="font-size:22px; font-weight:700; margin-bottom:4px;">Cliente {{ client.machine_id }}</h2>
+        <p class="text-muted">{{ client.client_name or 'Sem nome' }} — {{ client.hostname }}</p>
+    </div>
+    <a href="{{ url_for('clients_page') }}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+</div>
+
+<div class="grid-4" style="margin-bottom:24px;">
+    <div class="stat-card">
+        <div class="stat-label">Status</div>
+        <div class="stat-value" style="color:{{ '#52c41a' if client.status == 'online' else '#f5222d' }};">
+            {{ client.status }}
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Versão Atual</div>
+        <div class="stat-value" style="color:#722ed1;">{{ client.last_version or 'N/A' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Config OK</div>
+        <div class="stat-value" style="color:{{ '#52c41a' if client.config_ok else '#f5222d' }};">
+            {{ 'Sim' if client.config_ok else 'Não' }}
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Último Heartbeat</div>
+        <div class="stat-value" style="font-size:18px;">{{ client.last_heartbeat or 'N/A' }}</div>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><i class="fas fa-info-circle"></i> Detalhes do Cliente</div>
+    <div class="card-body">
+        <table class="table" style="margin-bottom:0;">
+            <tr><th>Machine ID</th><td><code>{{ client.machine_id }}</code></td></tr>
+            <tr><th>Nome</th><td>{{ client.client_name or '-' }}</td></tr>
+            <tr><th>Hostname</th><td>{{ client.hostname or '-' }}</td></tr>
+            <tr><th>First Seen</th><td>{{ client.first_seen or '-' }}</td></tr>
+            <tr><th>Firebird Host</th><td>{{ client.firebird_host or '-' }}</td></tr>
+            <tr><th>Firebird Port</th><td>{{ client.firebird_port or '-' }}</td></tr>
+            <tr><th>Firebird Database</th><td>{{ client.firebird_db or '-' }}</td></tr>
+            <tr><th>Status</th><td>
+                <span class="badge {{ 'badge-online' if client.status == 'online' else 'badge-offline' }}">
+                    {{ client.status }}
+                </span>
+            </td></tr>
+            <tr><th>Config OK</th><td>{{ 'Sim' if client.config_ok else 'Não' }}</td></tr>
+        </table>
+    </div>
+</div>
+
+{% if heartbeats %}
+<div class="card">
+    <div class="card-header"><i class="fas fa-heartbeat"></i> Histórico de Heartbeats (últimos 50)</div>
+    <div class="card-body" style="padding:0;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Versão</th>
+                    <th>CPU %</th>
+                    <th>RAM %</th>
+                    <th>Disco %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in heartbeats %}
+                <tr>
+                    <td class="text-small">{{ h.timestamp }}</td>
+                    <td>{{ h.version or 'N/A' }}</td>
+                    <td>{{ '%.1f'|format(h.cpu_percent) if h.cpu_percent is not none else '-' }}%</td>
+                    <td>{{ '%.1f'|format(h.ram_percent) if h.ram_percent is not none else '-' }}%</td>
+                    <td>{{ '%.1f'|format(h.disk_percent) if h.disk_percent is not none else '-' }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-error">
+    <i class="fas fa-exclamation-circle"></i>
+    <span>Nenhum heartbeat registrado ainda.</span>
+</div>
+{% endif %}
+{% endblock %}

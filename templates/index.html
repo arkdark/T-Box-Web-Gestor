@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% set active_page = 'dashboard' %}
+
+{% block content %}
+<h2 style="font-size:22px; font-weight:700; margin-bottom:8px;">Dashboard</h2>
+<p class="text-muted" style="margin-bottom:20px;">Monitoramento de instâncias T-Box Web conectadas ao Gestor</p>
+
+<div class="grid-4" style="margin-bottom:24px;">
+    <div class="stat-card">
+        <div class="stat-label">Total de Clientes</div>
+        <div class="stat-value" style="color:#1890ff;">{{ stats.total_clients }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Online</div>
+        <div class="stat-value" style="color:#52c41a;">{{ stats.online }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Offline</div>
+        <div class="stat-value" style="color:#f5222d;">{{ stats.offline }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Versão Mais Recente</div>
+        <div class="stat-value" style="color:#722ed1; font-size:22px;">{{ stats.latest_version }}</div>
+    </div>
+</div>
+
+{% if stats.outdated > 0 %}
+<div class="alert alert-error">
+    <i class="fas fa-exclamation-triangle"></i>
+    <span><strong>{{ stats.outdated }} cliente(s)</strong> estão com versão desatualizada. Considere forçar atualização.</span>
+</div>
+{% endif %}
+
+<h3 style="font-size:16px; font-weight:600; margin-bottom:12px;">Clientes Conectados</h3>
+<div class="card">
+    <div class="card-body" style="padding:0;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Máquina</th>
+                    <th>Hostname</th>
+                    <th>Versão</th>
+                    <th>Firebird</th>
+                    <th>Último Heartbeat</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in clients %}
+                <tr>
+                    <td>
+                        <span class="badge {{ 'badge-online' if c.status == 'online' else 'badge-offline' }}">
+                            <i class="fas fa-circle" style="font-size:8px; margin-right:4px;"></i>
+                            {{ c.status }}
+                        </span>
+                    </td>
+                    <td><code style="font-size:12px;">{{ c.machine_id }}</code></td>
+                    <td>{{ c.hostname or '-' }}</td>
+                    <td>
+                        <span class="badge {{ 'badge-current' if latest_version and c.last_version == latest_version else 'badge-outdated' }}">
+                            {{ c.last_version or 'N/A' }}
+                        </span>
+                    </td>
+                    <td class="text-small">{{ c.firebird_host }}{% if c.firebird_port %}:{{ c.firebird_port }}{% endif %}</td>
+                    <td class="text-small">{{ c.last_heartbeat or 'Nunca' }}</td>
+                    <td>
+                        <a href="{{ url_for('client_detail', machine_id=c.machine_id) }}" class="btn btn-secondary" style="height:32px; padding:0 10px; font-size:12px;">
+                            <i class="fas fa-eye"></i> Detalhes
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not clients %}
+                <tr>
+                    <td colspan="7" style="text-align:center; padding:40px; color:rgba(0,0,0,0.35);">
+                        Nenhum cliente conectado ainda.
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

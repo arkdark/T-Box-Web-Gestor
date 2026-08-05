@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T-Box Web Gestor{% block title %} - {{ title }}{% endblock %}</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/antd.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/fontawesome.min.css') }}">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            color: rgba(0,0,0,0.85);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header-bar {
+            background: linear-gradient(135deg, #001529 0%, #003a70 100%);
+            color: #fff;
+            padding: 14px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header-bar .logo { font-weight: 700; font-size: 18px; }
+        .header-bar .logo .tag { color: #5ac8fa; }
+        .header-bar .subtitle { font-size: 13px; opacity: 0.6; margin-left: 12px; }
+        .nav { display: flex; gap: 4px; }
+        .nav a {
+            color: rgba(255,255,255,0.75);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .nav a:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .nav a.active { background: #1890ff; color: #fff; }
+        .main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-body { padding: 20px; }
+        .stat-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            text-align: center;
+        }
+        .stat-value { font-size: 32px; font-weight: 700; margin: 8px 0; }
+        .stat-label { font-size: 13px; color: rgba(0,0,0,0.45); }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-online { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        .badge-offline { background: #fff2f0; color: #f5222d; border: 1px solid #ffccc7; }
+        .badge-outdated { background: #fff7e6; color: #fa8c16; border: 1px solid #ffd591; }
+        .badge-current { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
+        .table { width: 100%; border-collapse: collapse; }
+        .table th, .table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+        .table th { background: #fafafa; font-weight: 600; color: rgba(0,0,0,0.45); }
+        .table tr:hover { background: #fafafa; }
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 2000; }
+        .alert {
+            padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; gap: 8px; align-items: center;
+        }
+        .alert-success { background: #f6ffed; border: 1px solid #b7eb8f; color: #2d8659; }
+        .alert-error { background: #fff2f0; border: 1px solid #ffccc7; color: #d93029; }
+        .alert i { font-size: 16px; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px;
+            cursor: pointer; transition: all 0.2s; text-decoration: none;
+        }
+        .btn-primary { background: #1890ff; color: #fff; }
+        .btn-primary:hover { background: #40a9ff; }
+        .btn-secondary { background: #f0f0f0; color: rgba(0,0,0,0.65); }
+        .btn-secondary:hover { background: #e5e5e5; }
+        .btn-danger { background: #f5222d; color: #fff; }
+        .btn-danger:hover { background: #ff4d5f; }
+        .form-input {
+            width: 100%; height: 36px; padding: 4px 12px; border: 1px solid #d9d9d9;
+            border-radius: 6px; font-size: 14px; outline: none;
+        }
+        .form-input:focus { border-color: #1890ff; box-shadow: 0 0 0 3px rgba(24,144,255,0.1); }
+        .form-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: rgba(0,0,0,0.65); }
+        .text-muted { color: rgba(0,0,0,0.45); font-size: 13px; }
+        .text-small { font-size: 12px; color: rgba(0,0,0,0.45); }
+        footer { padding: 20px; text-align: center; color: rgba(0,0,0,0.35); font-size: 13px; }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="header-bar">
+        <div style="display: flex; align-items: center;">
+            <span class="logo">T-Box<span class="tag">Gestor</span></span>
+            <span class="subtitle">Painel de Controle e Gestão de Versões</span>
+        </div>
+        <div class="nav">
+            <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active_page == 'dashboard' else '' }}"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+            <a href="{{ url_for('clients_page') }}" class="{{ 'active' if active_page == 'clients' else '' }}"><i class="fas fa-server"></i> Clientes</a>
+            <a href="{{ url_for('releases_page') }}" class="{{ 'active' if active_page == 'releases' else '' }}"><i class="fas fa-tag"></i> Releases</a>
+            <a href="{{ url_for('config_page') }}" class="{{ 'active' if active_page == 'config' else '' }}"><i class="fas fa-cog"></i> Configurações</a>
+        </div>
+    </div>
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">
+            <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' }}"></i>
+            <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+    <footer>
+        T-Box Web Gestor © 2026 — <a href="https://github.com/arkdark/T-Box-Web" style="color: #1890ff;">T-Box Web</a> ·
+        <a href="https://github.com/arkdark/arkdark-T-Box-Web-releases/releases" style="color: #1890ff;">Releases</a>
+    </footer>
+    <div class="toast-container" id="toast-container"></div>
+    <script>
+        function showToast(type, title, message) {
+            var container = document.getElementById('toast-container');
+            var toast = document.createElement('div');
+            toast.style.cssText = 'background:#fff; border-radius:8px; padding:12px 16px; margin-bottom:8px; box-shadow:0 2px 12px rgba(0,0,0,0.15); border-left:4px solid ' + (type === 'success' ? '#52c41a' : '#f5222d') + '; max-width:320px;';
+            toast.innerHTML = '<div style="font-weight:600; font-size:13px; margin-bottom:4px;">' + title + '</div><div style="font-size:12px; color:rgba(0,0,0,0.45);">' + message + '</div>';
+            container.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 4000);
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

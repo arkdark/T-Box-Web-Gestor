@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Releases{% endblock %}
+{% set active_page = 'releases' %}
+
+{% block content %}
+<h2 style="font-size:22px; font-weight:700; margin-bottom:8px;">Releases do T-Box Web</h2>
+<p class="text-muted" style="margin-bottom:20px;">Versões publicadas no repositório <a href="https://github.com/arkdark/arkdark-T-Box-Web-releases/releases" target="_blank">arkdark/arkdark-T-Box-Web-Releases</a></p>
+
+<div class="card">
+    <div class="card-header"><i class="fas fa-tag"></i> Releases Disponíveis</div>
+    <div class="card-body" style="padding:0;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Versão</th>
+                    <th>Nome</th>
+                    <th>Publicado em</th>
+                    <th>Asset</th>
+                    <th>Checksum</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in releases %}
+                <tr>
+                    <td><strong>{{ r.version }}</strong></td>
+                    <td>{{ r.name or r.tag_name }}</td>
+                    <td class="text-small">{{ r.published_at[:10] if r.published_at else '-' }}</td>
+                    <td class="text-small">
+                        {% if r.asset_name %}
+                            {{ r.asset_name }} ({{ '%.1f'|format(r.asset_url|length / 100 / 10) }} KB)
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="text-small">
+                        {% if r.checksum %}
+                            <code>{{ r.checksum[:16] }}...</code>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if r.asset_url %}
+                            <a href="{{ r.asset_url }}" class="btn btn-secondary" style="height:28px; padding:0 8px; font-size:11px;" target="_blank">
+                                <i class="fas fa-download"></i> Download
+                            </a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not releases %}
+                <tr>
+                    <td colspan="6" style="text-align:center; padding:40px; color:rgba(0,0,0,0.35);">
+                        Nenhuma release encontrada. Clique em "Sincronizar" abaixo.
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
