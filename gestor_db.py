@@ -1,73 +1,87 @@
 """Módulo de banco de dados para o T-Box Web Gestor.
 
-Usa SQLite local para armazenar heartbeats, clientes, releases e configurações.
-Schema é migrado automaticamente na primeira inicialização.
+Usa PostgreSQL (Neon) para armazenar heartbeats, clientes, releases e configurações.
 
 Tabelas:
     clients      — instâncias do T-Box Web registradas
-    heartbeats   — histórico de heartbeats (últimos N minutos)
+    heartbeats   — histórico de heartbeats
     releases     — releases sincedos da API do GitHub
-    gestor_config— configurações do Gestor (repo de releases, etc.)
+    gestor_config— configurações do Gestor
 """
 import os
-import sqlite3
 import json
 from datetime import datetime, timedelta
 
-DB_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "gestor.db"
-)
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from psycopg2 import sql as pgm
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 HEARTBEAT_RETENTION_DAYS = 30
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    conn.autocommit = True
     return conn
 
 
 def init_db():
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL não configurada. Veja .env.example")
+
     conn = get_db()
-    conn.executescript("""
+    cur = conn.cursor()
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS gestor_config (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
-        );
+        )
+    """)
 
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS clients (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            id              SERIAL PRIMARY KEY,
             machine_id      TEXT UNIQUE NOT NULL,
             hostname        TEXT,
             client_name     TEXT,
             firebird_host   TEXT,
             firebird_port   TEXT,
             firebird_db     TEXT,
-            first_seen      TEXT,
-            last_seen       TEXT,
+            first_seen      TIMESTAMP,
+            last_seen       TIMESTAMP,
             last_version    TEXT,
             status          TEXT DEFAULT 'offline',
-            config_ok       INTEGER DEFAULT 0,
-            last_heartbeat  TEXT
-        );
+            config_ok       BOOLEAN DEFAULT FALSE,
+            last_heartbeat  TIMESTAMP
+        )
+    """)
 
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS heartbeats (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            id              SERIAL PRIMARY KEY,
             machine_id      TEXT NOT NULL,
-            timestamp       TEXT NOT NULL,
+            timestamp       TIMESTAMP NOT NULL DEFAULT NOW(),
             version         TEXT,
             cpu_percent     REAL,
             ram_percent     REAL,
             disk_percent    REAL,
-            online          INTEGER DEFAULT 1,
-            raw_data        TEXT
-        );
+            online          BOOLEAN DEFAULT TRUE,
+            raw_data        JSONB
+        )
+    """)
 
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_heartbeats_machine
+        ON heartbeats (machine_id, timestamp DESC)
+    """)
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS releases (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            version         TEXT NOT NULL,
+            id              SERIAL PRIMARY KEY,
+            version         TEXT NOT NULL UNIQUE,
             tag_name        TEXT NOT NULL,
             name            TEXT,
             published_at    TEXT,
@@ -75,9 +89,8 @@ def init_db():
             asset_url       TEXT,
             checksum        TEXT,
             html_url        TEXT,
-            raw_data        TEXT,
-            UNIQUE(version)
-        );
+            raw_data        JSONB
+        )
     """)
 
     defaults = {
@@ -85,16 +98,20 @@ def init_db():
         "heartbeat_timeout_minutes": "5",
         "github_token": "",
     }
+
     for k, v in defaults.items():
-        existing = conn.execute(
-            "SELECT value FROM gestor_config WHERE key = ?", (k,)
-        ).fetchone()
-        if existing is None:
-            conn.execute(
-                "INSERT INTO gestor_config (key, value) VALUES (?, ?)", (k, v)
+        cur.execute(
+            "SELECT value FROM gestor_config WHERE key = %s",
+            (k,)
+        )
+        if cur.fetchone() is None:
+            cur.execute(
+                "INSERT INTO gestor_config (key, value) VALUES (%s, %s)",
+                (k, v)
             )
 
     conn.commit()
+    cur.close()
     conn.close()
 
 
@@ -104,13 +121,15 @@ def _now_iso():
 
 def get_config(key, default=None):
     conn = get_db()
-    row = conn.execute(
-        "SELECT value FROM gestor_config WHERE key = ?", (key,)
-    ).fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM gestor_config WHERE key = %s", (key,))
+    row = cur.fetchone()
     conn.close()
     if row is None:
         return default
     val = row["value"]
+    if val is None:
+        return None
     if val.lower() in ("true", "false"):
         return val.lower() == "true"
     try:
@@ -121,15 +140,16 @@ def get_config(key, default=None):
 
 def set_config(key, value):
     conn = get_db()
+    cur = conn.cursor()
     if isinstance(value, (dict, list)):
         val_str = json.dumps(value)
     elif isinstance(value, bool):
         val_str = "true" if value else "false"
     else:
         val_str = str(value)
-    conn.execute(
-        "INSERT INTO gestor_config (key, value) VALUES (?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    cur.execute(
+        "INSERT INTO gestor_config (key, value) VALUES (%s, %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
         (key, val_str)
     )
     conn.commit()
@@ -141,70 +161,64 @@ def upsert_client(machine_id, hostname, client_name,
                   version, config_ok, server_info=None, client_info=None):
     now = _now_iso()
     conn = get_db()
-    client = conn.execute(
-        "SELECT id FROM clients WHERE machine_id = ?", (machine_id,)
-    ).fetchone()
+    cur = conn.cursor()
 
     raw_data = json.dumps({
         "server_info": server_info or {},
         "client_info": client_info or {},
     }, ensure_ascii=False)
 
-    if client is None:
-        conn.execute(
+    cur.execute("SELECT id FROM clients WHERE machine_id = %s", (machine_id,))
+    existing = cur.fetchone()
+
+    if existing is None:
+        cur.execute(
             """INSERT INTO clients
                (machine_id, hostname, client_name, firebird_host, firebird_port,
                 firebird_db, first_seen, last_seen, last_version, status,
                 config_ok, last_heartbeat)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'online', %s, %s)""",
             (machine_id, hostname, client_name, firebird_host, firebird_port,
-             firebird_db, now, now, version, int(config_ok), now)
+             firebird_db, now, now, version, config_ok, now)
         )
     else:
-        conn.execute(
+        cur.execute(
             """UPDATE clients SET
-               hostname       = ?,
-               client_name    = ?,
-               firebird_host  = ?,
-               firebird_port  = ?,
-               firebird_db    = ?,
-               last_seen      = ?,
-               last_version   = ?,
+               hostname       = %s,
+               client_name    = %s,
+               firebird_host  = %s,
+               firebird_port  = %s,
+               firebird_db    = %s,
+               last_seen      = %s,
+               last_version   = %s,
                status         = 'online',
-               config_ok      = ?,
-               last_heartbeat = ?
-               WHERE machine_id = ?""",
+               config_ok      = %s,
+               last_heartbeat = %s
+               WHERE machine_id = %s""",
             (hostname, client_name, firebird_host, firebird_port, firebird_db,
-             now, version, int(config_ok), now, machine_id)
+             now, version, config_ok, now, machine_id)
         )
     conn.commit()
     conn.close()
-    return client is None
+    return existing is None
 
 
 def record_heartbeat(machine_id, version, server_info=None, client_info=None, raw=None):
     now = _now_iso()
     conn = get_db()
-    hb = {
-        "version": version,
-        "cpu_percent": None,
-        "ram_percent": None,
-        "disk_percent": None,
-        "online": 1,
-        "raw_data": json.dumps(raw or {}, ensure_ascii=False),
-    }
-    if server_info:
-        hb["cpu_percent"] = server_info.get("cpu_percent")
-        hb["ram_percent"] = server_info.get("ram_percent")
-        hb["disk_percent"] = server_info.get("disk_percent")
+    cur = conn.cursor()
 
-    conn.execute(
+    cpu = (server_info or {}).get("cpu_percent")
+    ram = (server_info or {}).get("ram_percent")
+    disk = (server_info or {}).get("disk_percent")
+
+    cur.execute(
         """INSERT INTO heartbeats
            (machine_id, timestamp, version, cpu_percent, ram_percent,
             disk_percent, online, raw_data)
-           VALUES (?, ?, :version, :cpu_percent, :ram_percent,
-                   :disk_percent, :online, :raw_data)""",
-        (machine_id, now), hb
+           VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s)""",
+        (machine_id, now, version, cpu, ram, disk,
+         json.dumps(raw or {}, ensure_ascii=False))
     )
     conn.commit()
     conn.close()
@@ -212,9 +226,9 @@ def record_heartbeat(machine_id, version, server_info=None, client_info=None, ra
 
 def get_client(machine_id):
     conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM clients WHERE machine_id = ?", (machine_id,)
-    ).fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM clients WHERE machine_id = %s", (machine_id,))
+    row = cur.fetchone()
     conn.close()
     if row is None:
         return None
@@ -223,23 +237,24 @@ def get_client(machine_id):
 
 def get_all_clients():
     conn = get_db()
-    rows = conn.execute(
-        """SELECT * FROM clients
-           ORDER BY last_seen DESC"""
-    ).fetchall()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM clients ORDER BY last_seen DESC")
+    rows = cur.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 def get_recent_heartbeats(machine_id, limit=50):
     conn = get_db()
-    rows = conn.execute(
+    cur = conn.cursor()
+    cur.execute(
         """SELECT * FROM heartbeats
-           WHERE machine_id = ?
+           WHERE machine_id = %s
            ORDER BY timestamp DESC
-           LIMIT ?""",
+           LIMIT %s""",
         (machine_id, limit)
-    ).fetchall()
+    )
+    rows = cur.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -248,8 +263,9 @@ def update_client_status():
     timeout_min = int(get_config("heartbeat_timeout_minutes", "5"))
     cutoff = (datetime.now() - timedelta(minutes=timeout_min)).isoformat(timespec="seconds")
     conn = get_db()
-    conn.execute(
-        "UPDATE clients SET status = 'offline' WHERE last_seen < ?",
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE clients SET status = 'offline' WHERE last_seen < %s::timestamp",
         (cutoff,)
     )
     conn.commit()
@@ -258,25 +274,35 @@ def update_client_status():
 
 def get_dashboard_stats():
     conn = get_db()
-    total = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
-    online = conn.execute(
-        "SELECT COUNT(*) FROM clients WHERE status = 'online'"
-    ).fetchone()[0]
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) as cnt FROM clients")
+    total = cur.fetchone()["cnt"]
+
+    cur.execute("SELECT COUNT(*) as cnt FROM clients WHERE status = 'online'")
+    online = cur.fetchone()["cnt"]
+
     offline = total - online
-    latest_release = conn.execute(
-        "SELECT version FROM releases ORDER BY published_at DESC LIMIT 1"
-    ).fetchone()
-    latest_version = latest_release["version"] if latest_release else "N/A"
-    outdated = conn.execute(
-        "SELECT COUNT(*) FROM clients WHERE last_version IS NOT NULL AND last_version != ?",
-        (latest_version,)
-    ).fetchone()[0] if latest_version != "N/A" else 0
+
+    cur.execute("SELECT version FROM releases ORDER BY published_at DESC LIMIT 1")
+    latest_row = cur.fetchone()
+    latest_version = latest_row["version"] if latest_row else None
+
+    if latest_version:
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM clients WHERE last_version IS NOT NULL AND last_version != %s",
+            (latest_version,)
+        )
+        outdated = cur.fetchone()["cnt"]
+    else:
+        outdated = 0
+
     conn.close()
     return {
         "total_clients": total,
         "online": online,
         "offline": offline,
-        "latest_version": latest_version,
+        "latest_version": latest_version or "N/A",
         "outdated": outdated,
     }
 
@@ -284,20 +310,21 @@ def get_dashboard_stats():
 def upsert_release(version, tag_name, name, published_at,
                    asset_name, asset_url, checksum, html_url, raw_data=None):
     conn = get_db()
-    conn.execute(
+    cur = conn.cursor()
+    cur.execute(
         """INSERT INTO releases
            (version, tag_name, name, published_at, asset_name, asset_url,
             checksum, html_url, raw_data)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(version) DO UPDATE SET
-               tag_name    = excluded.tag_name,
-               name        = excluded.name,
-               published_at= excluded.published_at,
-               asset_name  = excluded.asset_name,
-               asset_url   = excluded.asset_url,
-               checksum    = excluded.checksum,
-               html_url    = excluded.html_url,
-               raw_data    = excluded.raw_data""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+           ON CONFLICT (version) DO UPDATE SET
+               tag_name     = EXCLUDED.tag_name,
+               name         = EXCLUDED.name,
+               published_at = EXCLUDED.published_at,
+               asset_name   = EXCLUDED.asset_name,
+               asset_url    = EXCLUDED.asset_url,
+               checksum     = EXCLUDED.checksum,
+               html_url     = EXCLUDED.html_url,
+               raw_data     = EXCLUDED.raw_data""",
         (version, tag_name, name, published_at, asset_name, asset_url,
          checksum, html_url, json.dumps(raw_data or {}, ensure_ascii=False))
     )
@@ -307,9 +334,9 @@ def upsert_release(version, tag_name, name, published_at,
 
 def get_all_releases():
     conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM releases ORDER BY published_at DESC"
-    ).fetchall()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM releases ORDER BY published_at DESC")
+    rows = cur.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -317,8 +344,9 @@ def get_all_releases():
 def cleanup_old_heartbeats():
     cutoff = (datetime.now() - timedelta(days=HEARTBEAT_RETENTION_DAYS)).isoformat(timespec="seconds")
     conn = get_db()
-    conn.execute("DELETE FROM heartbeats WHERE timestamp < ?", (cutoff,))
-    deleted = conn.total_changes
+    cur = conn.cursor()
+    cur.execute("DELETE FROM heartbeats WHERE timestamp < %s::timestamp", (cutoff,))
+    deleted = cur.rowcount
     conn.commit()
     conn.close()
     return deleted

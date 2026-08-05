@@ -2,6 +2,8 @@
 
 Servidor central de gerenciamento para aplicações **T-Box Web** — um app Flask para gerenciamento de bancos de dados Firebird.
 
+> **Frontend**: este repositório é **apenas o backend (API)**. O dashboard web será implementado como uma aplicação React separada que consome estas APIs. As páginas HTML embutidas (`templates/`) são um painel admin mínimo de fallback.
+
 O Gestor fornece:
 - **Heartbeat monitoring** — clientes T-Box Web enviam heartbeats periodicamente
 - **Controle de versões** — integração com GitHub Releases do repositório `arkdark-T-Box-Web-Releases`
@@ -18,7 +20,7 @@ T-Box Web (cliente)            T-Box Web Gestor (servidor)            GitHub
     |    - version                |     |                                  |
     |    - server_info            |     | 2. Fetch releases               |
     |    - client_info            |     v                                  |
-    |                             |  4. Armazena no SQLite                |
+    |                             |  4. Armazena no PostgreSQL (Neon)       |
     | 2. Verifica versão          |                                    |
     |    GET /api/version/latest   |  5. Fornece version check + dashboard  |
     |    (opcional)              |                                    |
@@ -27,6 +29,7 @@ T-Box Web (cliente)            T-Box Web Gestor (servidor)            GitHub
 ## Requisitos
 
 - Python 3.8+
+- Conta no [Neon](https://neon.tech) (PostgreSQL serverless) — gratuita
 - Windows (recomendado — alinhado com T-Box Web)
 
 ## Instalação
@@ -47,8 +50,9 @@ cp .env.example .env
 |-------------------------------|----------------------------------------------------|--------------------------------------------|
 | `SECRET_KEY`                  | Chave secreta do Flask                             | (gerada aleatoriamente)                    |
 | `PORT`                        | Porta do servidor                                  | `5001`                                     |
+| `DATABASE_URL`                | Connection string do PostgreSQL (Neon)               | **Obrigatório**                            |
 | `GITHUB_TOKEN`                | PAT para acessar releases privados                 | (opcional)                                 |
-| `REleases_REPO`               | Repo de releases do T-Box Web                      | `arkdark/arkdark-T-Box-Web-releases`       |
+| `RELEASES_REPO`               | Repo de releases do T-Box Web                      | `arkdark/arkdark-T-Box-Web-releases`       |
 | `HEARTBEAT_TIMEOUT_MINUTES`   | Clientes offline após X min sem heartbeat          | `5`                                        |
 
 ## Execução
@@ -152,6 +156,9 @@ threading.Thread(target=heartbeat_worker, daemon=True).start()
 
 ## Repositórios relacionados
 
-- **Cliente**: [arkdark/T-Box-Web](https://github.com/arkdark/T-Box-Web)
-- **Releases**: [arkdark/arkdark-T-Box-Web-Releases](https://github.com/arkdark/arkdark-T-Box-Web-Releases)
-- **Gestor** (este): [arkdark/T-Box-Web-Gestor](https://github.com/arkdark/T-Box-Web-Gestor)
+| Repositório | Descrição |
+|---|---|
+| **Cliente** | [arkdark/T-Box-Web](https://github.com/arkdark/T-Box-Web) — app Flask cliente |
+| **Releases** | [arkdark/arkdark-T-Box-Web-Releases](https://github.com/arkdark/arkdark-T-Box-Web-Releases) — binários e notas |
+| **Gestor API** (este) | [arkdark/T-Box-Web-Gestor](https://github.com/arkdark/T-Box-Web-Gestor) — backend Python/Flask |
+| **Gestor Frontend** | *(a planejar)* — aplicação React para o dashboard web |
